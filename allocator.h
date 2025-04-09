@@ -35,7 +35,7 @@ struct BlockAllocator
     static std::vector<allocInfo<T>*>& sortedBlocks;
 
 
-    constexpr BlockAllocator() = default;
+    BlockAllocator() = default;
 
 
     template <class U>
