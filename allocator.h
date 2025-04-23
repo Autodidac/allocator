@@ -1,8 +1,7 @@
 #pragma once
 
-#include <algorithm>
-#include <vector>
 #include <ranges>
+#include <vector>
 
 
 template<class T>
@@ -10,6 +9,7 @@ struct allocInfo
 {
     T* p;
     size_t count;
+    size_t savedOffset;
 };
 
 
@@ -35,14 +35,14 @@ struct BlockAllocator
     static std::vector<allocInfo<T>*>& sortedBlocks;
 
 
-    BlockAllocator() = default;
+    BlockAllocator() noexcept = default;
 
 
     template <class U>
-    BlockAllocator(const BlockAllocator<U, blockSize>&) {}
+    BlockAllocator(const BlockAllocator<U, blockSize>&) noexcept {}
 
 
-    [[nodiscard]] T* allocate(size_t elements)
+    [[nodiscard]] T* allocate(size_t elements) noexcept
     {
         if (!elements)
         {
@@ -55,7 +55,7 @@ struct BlockAllocator
         if (!blocks.size())
         {
             T* pointer = allocateBlock();
-            blocks.emplace_back(pointer, 1);
+            blocks.emplace_back(pointer, 1, 0);
             sortBlocks();
             blockOffset = elements;
             blockIndex = 0;
@@ -64,7 +64,8 @@ struct BlockAllocator
         if (elements > blockSize - blockOffset)
         {
             T* pointer = allocateBlock();
-            blocks.emplace_back(pointer, 1);
+            blocks.back().savedOffset = blockOffset;
+            blocks.emplace_back(pointer, 1, 0);
             sortBlocks();
             blockOffset = elements;
             blockIndex += 1;
@@ -77,13 +78,13 @@ struct BlockAllocator
     }
 
 
-    [[nodiscard]] T* allocateBlock()
+    [[nodiscard]] T* allocateBlock() noexcept
     {
         return static_cast<T*>(::operator new(blockBytes));
     }
 
 
-    void deallocate(T* pointer, size_t)
+    void deallocate(T* pointer, size_t) noexcept
     {
         auto iterator = std::ranges::lower_bound(sortedBlocks, pointer, {}, [](const allocInfo<T>* pointer) { return pointer->p; });
 
@@ -106,41 +107,42 @@ struct BlockAllocator
         {
             ::operator delete(currentBlock->p, blockBytes);
 
-            std::erase_if(blocks, [&](const allocInfo<T>& info) { return currentBlock == &info; });
+            std::erase_if(blocks, [&](const allocInfo<T>& info) noexcept { return currentBlock == &info; });
             sortBlocks();
             --blockIndex;
+            blockOffset = blocks[blockIndex].savedOffset;
         }
     }
 
 
-    void sortBlocks()
+    void sortBlocks() noexcept
     {
-        sortedBlocks = blocks | std::ranges::views::transform([](allocInfo<T>& element) { return &element; }) | std::ranges::to<std::vector<allocInfo<T>*>>();
-        std::ranges::sort(sortedBlocks, {}, [](const allocInfo<T>* pointer) { return pointer->p; });
+        sortedBlocks = blocks | std::ranges::views::transform([](allocInfo<T>& element) noexcept { return &element; }) | std::ranges::to<std::vector<allocInfo<T>*>>();
+        std::ranges::sort(sortedBlocks, {}, [](const allocInfo<T>* pointer) noexcept { return pointer->p; });
     }
 
 
-    [[nodiscard]] bool operator==(const BlockAllocator&) const
+    [[nodiscard]] constexpr bool operator==(const BlockAllocator&) const noexcept
     {
         return true;
     }
 
 
-    [[nodiscard]] bool operator!=(const BlockAllocator&) const
+    [[nodiscard]] constexpr bool operator!=(const BlockAllocator&) const noexcept
     {
         return false;
     }
 
 
-    [[nodiscard]] static allocatorState<T, blockSize>& getState()
+    [[nodiscard]] static allocatorState<T, blockSize>& getState() noexcept
     {
         alignas(allocatorState<T, blockSize>) static std::byte storage[sizeof(allocatorState<T, blockSize>)];
 
-        [[maybe_unused]] static const bool _ = []()
-        {
-            new(storage) allocatorState<T, blockSize>{};
-            return true;
-        }();
+        [[maybe_unused]] static const bool _ = []() noexcept
+            {
+                new(storage) allocatorState<T, blockSize>{};
+                return true;
+            }();
 
         return *std::launder(reinterpret_cast<allocatorState<T, blockSize>*>(storage));
     }
