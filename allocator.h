@@ -40,16 +40,12 @@ struct allocatorState
 
 
 template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag = use_thread_safety>
-struct BlockAllocator
+class BlockAllocator
 {
+public:
     using value_type = T;
     using is_always_equal = std::true_type;
-    static constexpr size_t blockBytes = blockSize * sizeof(T);
-    static size_t& blockIndex;
-    static size_t& blockOffset;
-    static std::vector<allocInfo<T>>& blocks;
-    static std::vector<allocInfo<T>*>& sortedBlocks;
-    static std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::mutex&, std::monostate> mutex;
+    constexpr static size_t blockBytes = blockSize * sizeof(T);
 
 
     BlockAllocator() noexcept = default;
@@ -61,6 +57,14 @@ struct BlockAllocator
 
     [[nodiscard]] T* allocate(size_t elements) noexcept
     {
+        static allocatorState<T, blockSize, thread_safe_tag>& state = getState();
+        static size_t& blockIndex = state.blockIndex;
+        static size_t& blockOffset = state.blockOffset;
+        static std::vector<allocInfo<T>>& blocks = state.blocks;
+        static std::vector<allocInfo<T>*>& sortedBlocks = state.sortedBlocks;
+        static std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::mutex&, std::monostate> mutex = state.mutex;
+
+
         [[maybe_unused]] const std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::scoped_lock<std::mutex>, std::monostate> lock(mutex);
 
         if (!elements)
@@ -99,6 +103,14 @@ struct BlockAllocator
 
     void deallocate(T* pointer, size_t) noexcept
     {
+        static allocatorState<T, blockSize, thread_safe_tag>& state = getState();
+        static size_t& blockIndex = state.blockIndex;
+        static size_t& blockOffset = state.blockOffset;
+        static std::vector<allocInfo<T>>& blocks = state.blocks;
+        static std::vector<allocInfo<T>*>& sortedBlocks = state.sortedBlocks;
+        static std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::mutex&, std::monostate> mutex = state.mutex;
+
+
         [[maybe_unused]] const std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::scoped_lock<std::mutex>, std::monostate> lock(mutex);
 
         auto iterator = std::ranges::lower_bound(sortedBlocks, pointer, {}, [](const allocInfo<T>* pointer) { return pointer->p; });
@@ -153,6 +165,14 @@ private:
 
     void sortBlocks() noexcept
     {
+        static allocatorState<T, blockSize, thread_safe_tag>& state = getState();
+        static size_t& blockIndex = state.blockIndex;
+        static size_t& blockOffset = state.blockOffset;
+        static std::vector<allocInfo<T>>& blocks = state.blocks;
+        static std::vector<allocInfo<T>*>& sortedBlocks = state.sortedBlocks;
+        static std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::mutex&, std::monostate> mutex = state.mutex;
+
+
         sortedBlocks = blocks | std::ranges::views::transform([](allocInfo<T>& element) noexcept { return &element; }) | std::ranges::to<std::vector<allocInfo<T>*>>();
         std::ranges::sort(sortedBlocks, {}, [](const allocInfo<T>* pointer) noexcept { return pointer->p; });
     }
@@ -162,27 +182,12 @@ private:
     {
         alignas(allocatorState<T, blockSize, thread_safe_tag>) static std::byte storage[sizeof(allocatorState<T, blockSize, thread_safe_tag>)];
 
-        [[maybe_unused]] static const bool _ = []() noexcept
-            {
-                new(storage) allocatorState<T, blockSize, thread_safe_tag>{};
-                return true;
-            }();
+        [[maybe_unused]] static const bool _ = []() noexcept -> bool
+        {
+            new(storage) allocatorState<T, blockSize, thread_safe_tag>{};
+            return true;
+        }();
 
         return *std::launder(reinterpret_cast<allocatorState<T, blockSize, thread_safe_tag>*>(storage));
     }
 };
-
-template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag>
-inline size_t& BlockAllocator<T, blockSize, thread_safe_tag>::blockIndex = BlockAllocator<T, blockSize, thread_safe_tag>::getState().blockIndex;
-
-template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag>
-inline size_t& BlockAllocator<T, blockSize, thread_safe_tag>::blockOffset = BlockAllocator<T, blockSize, thread_safe_tag>::getState().blockOffset;
-
-template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag>
-inline std::vector<allocInfo<T>>& BlockAllocator<T, blockSize, thread_safe_tag>::blocks = BlockAllocator<T, blockSize, thread_safe_tag>::getState().blocks;
-
-template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag>
-inline std::vector<allocInfo<T>*>& BlockAllocator<T, blockSize, thread_safe_tag>::sortedBlocks = BlockAllocator<T, blockSize, thread_safe_tag>::getState().sortedBlocks;
-
-template <class T, size_t blockSize, Thread_Safe_Concept thread_safe_tag>
-inline std::conditional_t<std::is_same_v<thread_safe_tag, use_thread_safety>, std::mutex&, std::monostate> BlockAllocator<T, blockSize, thread_safe_tag>::mutex = BlockAllocator<T, blockSize, thread_safe_tag>::getState().mutex;
