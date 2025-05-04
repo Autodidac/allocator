@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <cmath>
 
 
 struct use_safety {};
@@ -54,7 +53,6 @@ private:
     size_t size;
     size_t offset;
 };
-
 
 
 class JunkAllocator
@@ -263,7 +261,7 @@ public:
 
 
     template<class U>
-    stdJunkAllocator(const stdJunkAllocator<U, safety_flag>& other) noexcept : arena(other.arena) {}
+    stdJunkAllocator(const stdJunkAllocator<U, safety_flag, single_type_flag>& other) noexcept : arena(other.arena) {}
 
 
     [[nodiscard]] static arenaPointer createArena(size_t size) noexcept
@@ -286,7 +284,14 @@ public:
 
     [[nodiscard]] static size_t getFreeSlots(arenaPointer& arena) noexcept
     {
-        return JunkAllocator::getFreeSlots<T>(arena);
+        if constexpr (std::same_as<single_type_flag, use_single_type>)
+        {
+            return JunkAllocator::getFreeSlots<T>(arena);
+        }
+        else if constexpr (std::same_as<single_type_flag, use_multi_type>)
+        {
+            return JunkAllocator::multiTypeGetFreeSlots<T>(arena);
+        }
     }
 
 
@@ -311,7 +316,7 @@ public:
     }
 
 
-    void deallocate(T*, size_t) noexcept {}
+    void deallocate(T*, size_t) const noexcept {}
 
 
     [[nodiscard]] bool operator==(const stdJunkAllocator& other) const noexcept
