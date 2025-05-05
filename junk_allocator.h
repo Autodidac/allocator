@@ -64,15 +64,37 @@ public:
     }
 
 
+    static void destroyArena(arenaPointer& arena) noexcept
+    {
+        ::operator delete(reinterpret_cast<void*>(arena.ptr), arena.size);
+    }
+
+
     static void clearArena(arenaPointer& arena) noexcept
     {
         arena.offset = 0;
     }
 
 
-    static void destroyArena(arenaPointer& arena) noexcept
+    template<class T>
+    static void stepBackwards(arenaPointer& arena, size_t count) noexcept
     {
-        ::operator delete(reinterpret_cast<void*>(arena.ptr), arena.size);
+        const size_t bytes = count * sizeof(T);
+        if (bytes > arena.offset)
+        {
+            arena.offset = 0;
+        }
+        else
+        {
+            arena.offset -= bytes;
+        }
+    }
+
+
+    template<class T>
+    static void stepBackwardsUnsafe(arenaPointer& arena, size_t count) noexcept
+    {
+        arena.offset -= count * sizeof(T);
     }
 
 
@@ -270,15 +292,28 @@ public:
     }
 
 
+    static void destroyArena(arenaPointer& arena) noexcept
+    {
+        JunkAllocator::destroyArena(arena);
+    }
+
+
     static void clearArena(arenaPointer& arena) noexcept
     {
         JunkAllocator::clearArena(arena);
     }
 
 
-    static void destroyArena(arenaPointer& arena) noexcept
+    [[nodiscard]] static void stepBackwards(arenaPointer& arena, size_t count) noexcept
     {
-        JunkAllocator::destroyArena(arena);
+        if constexpr (std::same_as<safety_flag, use_safety>)
+        {
+            return JunkAllocator::stepBackwards<T>(arena, count);
+        }
+        else if constexpr (std::same_as<safety_flag, no_safety>)
+        {
+            return JunkAllocator::stepBackwardsUnsafe<T>(arena, count);
+        }
     }
 
 
